@@ -6,14 +6,6 @@
 
 ---
 
-## Навигация
-
-- [Основная спецификация](spec.md): scope, роли, архитектура, T2SQL-service, semantic layer, pipeline, security, CI/CD, MVP.
-- [Примеры конфигураций и API](docs/examples.md): dbt project layout, semantic YAML, glossary, policies, API payloads, audit event, regression case.
-- [Сценарии интеграции](docs/integration-scenarios.md): onboarding, публикация semantic changes, успешный query flow, ambiguity, policy denial, feedback loop, deployment.
-
----
-
 ## Область системы
 
 T2SQL-service принимает вопрос пользователя на естественном языке, сопоставляет его с dbt-семантикой и внешними справочниками, строит безопасный запрос, выполняет его в DWH или через dbt Semantic Layer и возвращает результат, SQL и краткое объяснение.
@@ -280,15 +272,6 @@ lineage:
   - semantic_model.orders
   - model.fct_orders
 ```
-
----
-
-## Примеры и сценарии
-
-Длинные примеры вынесены из основной спецификации:
-
-- [Примеры конфигураций и API](docs/examples.md)
-- [Сценарии интеграции](docs/integration-scenarios.md)
 
 ---
 
