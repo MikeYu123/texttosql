@@ -1,6 +1,6 @@
-# Спецификация: dbt Semantic Layer + Text-to-SQL
+# Спецификация: [dbt Semantic Layer](https://docs.getdbt.com/docs/use-dbt-semantic-layer/dbt-sl) + Text-to-SQL
 
-**Версия:** 0.2  
+**Версия:** 0.3  
 **Формат:** component spec  
 **Фокус:** компоненты, роли, взаимодействия, последовательности выполнения NLQ → SQL
 
@@ -8,7 +8,7 @@
 
 ## Область системы
 
-Система принимает вопрос пользователя на естественном языке, сопоставляет его с dbt-семантикой, строит безопасный запрос, выполняет его в DWH и возвращает результат, SQL и краткое объяснение.
+T2SQL-service принимает вопрос пользователя на естественном языке, сопоставляет его с dbt-семантикой и внешними справочниками, строит безопасный запрос, выполняет его в DWH или через dbt Semantic Layer и возвращает результат, SQL и краткое объяснение.
 
 ---
 
@@ -16,11 +16,10 @@
 
 | Роль | Что делает | Когда участвует |
 |---|---|---|
-| Администратор | Настраивает подключения, SSO, роли, лимиты, политики | setup, изменение доступов, incident/debug |
-| Data steward | Управляет бизнес-терминами, синонимами, certified metrics | добавление/уточнение семантики, разбор feedback |
-| Analytics engineer | Развивает dbt-модели, тесты, контракты, semantic YAML | изменение модели данных и метрик |
+| Администратор | Управляет системной конфигурацией: подключения к dbt/DWH/служебным БД, SSO/RBAC mapping, роли, лимиты, политики | setup, изменение доступов, incident/debug |
+| Data steward / Analytics engineer | Управляет бизнес-терминами, синонимами, certified metrics и изменениями [dbt-моделей](https://docs.getdbt.com/docs/build/sql-models), [data tests](https://docs.getdbt.com/reference/resource-properties/data-tests), [контрактов](https://docs.getdbt.com/docs/mesh/govern/model-contracts), semantic YAML | добавление/уточнение семантики, разбор feedback, изменение модели данных и метрик |
 | Пользователь | Задает вопросы к данным на натуральном языке | обычное использование |
-| T2SQL service | Парсит вопрос, строит план, генерирует/выполняет запрос | каждый пользовательский вопрос |
+| T2SQL-service | Парсит вопрос, строит план, применяет policy, генерирует/выполняет запрос | каждый пользовательский вопрос |
 
 ---
 
@@ -29,35 +28,37 @@
 ```mermaid
 flowchart TB
     User[Пользователь] --> UI[Chat UI / NLQ API]
-    Admin[Администратор] --> AdminUI[Admin Console]
-    Steward[Data Steward] --> StewardUI[Steward Studio]
-    AE[Analytics Engineer] --> Git[dbt Git repo]
+    Admin[Администратор] --> T2SQL
+    Steward[Data Steward / Analytics Engineer] --> StewardUI[Steward UI]
 
-    UI --> Orchestrator[NLQ Orchestrator]
-    Orchestrator --> Catalog[Semantic Catalog]
-    Orchestrator --> Planner[Query Planner]
-    Planner --> Generator[Query Generator]
-    Generator --> Guard[Policy & SQL Guard]
-    Guard --> Executor[Query Executor]
+    UI --> T2SQL[T2SQL-service]
 
-    Catalog --> Artifacts[dbt artifacts]
-    Catalog --> Glossary[Glossary / Synonyms]
-    Catalog --> Search[Hybrid Search Index]
+    T2SQL --> Metadata[(Metadata Store<br/>dbt artifacts + normalized catalog)]
+    T2SQL --> Synonyms[(Synonym Dictionaries<br/>glossary + aliases)]
+    T2SQL --> VectorDB[(Vector DB<br/>embeddings + similar questions)]
+    T2SQL --> PolicyDB[(Policy DB<br/>RBAC + PII + limits)]
 
     Git --> CI[CI/CD]
     CI --> dbt[dbt build / parse / test]
-    dbt --> Artifacts
+    dbt --> Metadata
 
-    Executor --> SL[dbt Semantic Layer / MetricFlow]
-    Executor --> DWH[(Data Warehouse)]
+    T2SQL --> SL[dbt Semantic Layer / MetricFlow]
+    T2SQL --> DWH[(Data Warehouse)]
     SL --> DWH
 
-    Executor --> Audit[(Audit Logs)]
-    Orchestrator --> Audit
+    T2SQL --> Audit[(Audit Logs)]
 
-    AdminUI --> Policy[Policy Config]
-    Policy --> Guard
-    StewardUI --> Glossary
+    T2SQL --> Config[(System Config<br/>connections + limits)]
+    StewardUI --> T2SQL
+    StewardUI --> Git
+    StewardUI --> Synonyms
+    StewardUI --> Audit
+
+    classDef user fill:#dbeafe,stroke:#2563eb,color:#0f172a
+    classDef custom fill:#dcfce7,stroke:#16a34a,color:#0f172a
+
+    class User,Admin,Steward user
+    class UI,StewardUI,T2SQL custom
 ```
 
 ---
@@ -66,25 +67,42 @@ flowchart TB
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
-| Chat UI | Интерфейс вопрос-ответ, SQL preview, результат, feedback | пользователь задает вопрос |
-| NLQ API | HTTP/API вход для UI, BI, Slack, внутренних клиентов | любой внешний вызов |
-| Auth Middleware | Проверяет пользователя, группы, tenant, роли | каждый запрос |
-| NLQ Orchestrator | Управляет pipeline NLQ → result | каждый вопрос |
-| Language Normalizer | Определяет язык, нормализует даты, числа, валюты | перед intent parsing |
-| Intent Classifier | Определяет тип запроса: metric, lookup, drilldown, unsupported | после нормализации |
-| Semantic Retriever | Достает релевантные метрики, dimensions, entities, saved queries | после intent classification |
-| Term Resolver | Маппит слова пользователя на canonical semantic objects | при разборе вопроса |
-| Query Planner | Строит формальный query plan | перед генерацией SQL |
-| Clarification Engine | Формирует уточняющий вопрос | если confidence низкий или есть неоднозначность |
-| Query Generator | Генерирует semantic query или controlled SQL | после query plan |
-| SQL Validator | Проверяет SQL AST, только SELECT, лимиты, allowlist | перед исполнением SQL |
-| Policy Guard | Проверяет RBAC, PII, row/column policies, cost limits | перед исполнением |
-| Query Executor | Выполняет запрос через dbt SL, MetricFlow или DWH | после validation |
-| Result Formatter | Форматирует таблицу, типы, значения, агрегаты | после получения result set |
-| Answer Explainer | Объясняет метрики, фильтры, период, SQL, lineage | перед ответом пользователю |
-| Feedback Collector | Сохраняет оценки и комментарии пользователя | после ответа |
-| Audit Logger | Логирует вопрос, план, SQL hash, объекты, статус | на каждом этапе |
-| Session Store | Хранит thread context и уточнения | в многошаговом диалоге |
+| Chat UI / NLQ API | Пользовательский и программный вход: вопрос, SQL preview, результат, feedback | пользовательский вопрос или внешний API-вызов |
+| Steward UI | Control plane для data stewards / analytics engineers: glossary, synonyms, dbt YAML, semantic models, metrics, tests, contracts, review feedback, certification status | governance workflow, разбор feedback, автоматизированные git-коммиты/PR |
+| T2SQL-service | Единственный прикладной сервис: auth context, system config, admin operations, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос, администрирование, incident/debug |
+| Metadata Store | Нормализованный catalog из [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts), descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
+| Synonym Dictionaries | Бизнес-глоссарий, алиасы, переводы, доменные термины | term resolution, disambiguation, explain |
+| Vector DB | Embeddings для semantic objects, описаний, похожих вопросов и regression cases | semantic retrieval и ranking |
+| Policy DB / Policy Engine | RBAC, PII tags, row/column policies, лимиты, allowlists | перед планированием, генерацией и исполнением |
+| dbt Semantic Layer / [MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow) | Каноническое исполнение metric queries поверх dbt-семантики | certified KPI, агрегаты, group by, time series |
+| Data Warehouse | Фактическое хранилище данных и runtime для compiled SQL | выполнение compiled semantic query или controlled fallback SQL |
+| Audit Store | Trace вопроса, decisions, policy checks, query plan, SQL hash, статус | каждый запрос и incident/debug |
+
+
+## Steward workflow
+
+`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. В дизайне он фиксируется как `Steward UI`. Роль data steward объединяется с analytics engineer: один пользователь управляет бизнес-семантикой и dbt-файлами через UI, а изменения публикуются автоматизированными git-коммитами и PR.
+
+### Что делает data steward
+
+| Задача | Действие в UI | Результат |
+|---|---|---|
+| Разбор плохого ответа | Видит question trace, выбранные semantic objects, SQL hash, policy decisions, feedback comment | создает steward task или regression case |
+| Управление glossary | Добавляет/редактирует business term, definition, owner, domain | обновляется Synonym Dictionaries и Metadata Store |
+| Управление synonyms | Маппит пользовательские формулировки на canonical semantic object | T2SQL-service лучше resolve-ит термины |
+| Изменение dbt semantics | Редактирует descriptions, semantic models, metrics, saved queries, tests, contracts | Steward UI создает branch, коммитит dbt YAML/SQL changes и открывает PR |
+| Certification | Помечает metric/dimension/saved query как certified/experimental/deprecated | ranking в retrieval учитывает статус |
+| Review изменений | Проверяет PR или draft-изменение перед публикацией | CI/CD валидирует dbt project, glossary, policies и regression questions |
+
+### Варианты реализации
+
+| Вариант | Когда выбирать | Как выглядит |
+|---|---|---|
+| Встроенный `Steward UI` в T2SQL-service | MVP, нет enterprise data catalog, нужен быстрый workflow для feedback, synonyms и dbt semantic changes | 4–6 экранов: feedback queue, semantic object detail, dbt semantic YAML editor, glossary editor, synonym editor, certification toggle. Изменения сохраняются как branch + commit + PR в dbt Git repo. |
+| Third-party data catalog | В компании уже есть governance/catalog practice или нужен готовый workflow approval/ownership/asset tagging | T2SQL-service синхронизирует glossary terms, owners, domains, tags и descriptions через adapter. Кандидаты: [OpenMetadata Glossary](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary) или [DataHub GlossaryTerm](https://docs.datahub.com/docs/generated/metamodel/entities/glossaryterm). |
+| Git-only workflow | Команда хочет все semantic changes review-ить как код без UI-редактора | Steward UI показывает feedback и deep link на файлы, а пользователь правит `glossary.yml`, `synonyms.yml`, dbt YAML/SQL descriptions и regression questions напрямую в PR. |
+
+Рекомендация для текущего дизайна: для MVP реализовать встроенный `Steward UI` как часть T2SQL-service, а интеграцию с data catalog оставить adapter boundary. Так T2SQL не зависит от конкретного vendor, но может заменить собственный glossary/synonym UI на OpenMetadata/DataHub, если они уже используются в организации.
 
 ---
 
@@ -93,70 +111,64 @@ flowchart TB
 | Компонент | Назначение | Используется когда |
 |---|---|---|
 | dbt models | Физические и логические витрины данных | источник данных для semantic objects |
-| dbt semantic models | Описание фактов, измерений, сущностей | при построении metric query |
-| dbt metrics | Канонические KPI и формулы | когда вопрос содержит бизнес-метрику |
-| dbt entities | Join keys между semantic models | при группировках и связях между сущностями |
-| dbt dimensions | Доступные разрезы анализа | при `by country`, `by segment`, `monthly` |
-| dbt time dimensions | Временные поля и grain | при периодах, трендах, сравнениях |
-| dbt saved queries | Сохраненные semantic-запросы | для типовых вопросов и certified outputs |
-| dbt exports | Материализованные saved queries | когда нужен cache, BI-совместимость или low latency |
-| dbt tests | Проверка качества данных | в CI/CD и как сигнал trust |
-| dbt contracts | Контракт колонок и типов | при validation semantic catalog |
-| dbt docs/descriptions | Описания моделей, колонок, метрик | для retrieval и explainability |
-| dbt exposures | Связь метрик/моделей с downstream BI | для lineage и impact analysis |
-| dbt artifacts | `manifest.json`, `catalog.json`, semantic metadata | для индексации semantic catalog |
+| [dbt semantic models](https://docs.getdbt.com/docs/build/semantic-models) | Описание фактов, измерений, сущностей | при построении metric query |
+| [dbt metrics](https://docs.getdbt.com/docs/build/metrics-overview) | Канонические KPI и формулы | когда вопрос содержит бизнес-метрику |
+| [dbt entities](https://docs.getdbt.com/docs/build/entities) | Join keys между semantic models | при группировках и связях между сущностями |
+| [dbt dimensions](https://docs.getdbt.com/docs/build/dimensions) | Доступные разрезы анализа, включая time dimensions и grain | при `by country`, `by segment`, `monthly` |
+| [dbt saved queries](https://docs.getdbt.com/docs/build/saved-queries) | Сохраненные semantic-запросы | для типовых вопросов и certified outputs |
+| [dbt exports](https://docs.getdbt.com/docs/use-dbt-semantic-layer/exports) | Материализованные saved queries | когда нужен cache, BI-совместимость или low latency |
+| dbt data tests | Проверка качества данных | в CI/CD и как сигнал trust |
+| dbt model contracts | Контракт колонок и типов | при validation Metadata Store |
+| [dbt docs/descriptions](https://docs.getdbt.com/docs/build/documentation) | Описания моделей, колонок, метрик | для retrieval и explainability |
+| [dbt exposures](https://docs.getdbt.com/docs/build/exposures) | Связь метрик/моделей с downstream BI | для lineage и impact analysis |
+| dbt artifacts | `manifest.json`, `catalog.json`, semantic metadata | для наполнения Metadata Store и Vector DB |
 
 ---
 
-## Компоненты metadata/catalog
+## Хранилища и индексы T2SQL-service
 
-| Компонент | Назначение | Используется когда |
+| Хранилище | Что содержит | Как использует T2SQL-service |
 |---|---|---|
-| Semantic Catalog API | Единый API по метрикам, dimensions, entities, lineage | при retrieval, planner, explain |
-| Artifact Importer | Загружает dbt artifacts из CI/CD или object storage | после каждого deploy |
-| Metadata Normalizer | Приводит dbt metadata к внутренней схеме | после artifact import |
-| Hybrid Search Index | Поиск по names, descriptions, synonyms, embeddings | при сопоставлении вопроса с семантикой |
-| Glossary Store | Бизнес-термины и определения | при term resolution и explain |
-| Synonym Store | Алиасы терминов на разных языках | при natural language matching |
-| Certification Registry | Статус certified/experimental/deprecated | при ранжировании объектов |
-| Lineage Service | Связь metric → semantic model → dbt model → source | в explain, audit, impact analysis |
-| Domain Registry | Финансы, продажи, продукт и другие домены | при сужении search space |
-| Ownership Registry | Владельцы объектов | для governance и feedback routing |
+| Metadata Store | Нормализованные dbt artifacts, semantic objects, descriptions, domains, ownership, certification, lineage | точный lookup по имени, domain filter, validation, explain |
+| Synonym Dictionaries | Термины, синонимы, переводы, business definitions, canonical object refs | расширяет запрос пользователя и разрешает бизнес-термины |
+| Vector DB | Embeddings для descriptions, semantic objects, saved queries, прошлых/регрессионных вопросов | ищет близкие объекты и похожие вопросы после lexical lookup |
+| Policy DB | Роли, группы, row/column rules, PII tags, allowlists, cost limits | отсекает недоступные объекты до query generation и проверяет финальный query plan |
+| Audit Store | Request trace, selected objects, policy decisions, SQL hash, latency, feedback | explainability, расследования, regression mining |
 
 ---
 
-## Компоненты безопасности
+## Security controls
 
-| Компонент | Назначение | Используется когда |
+| Control | Где хранится / исполняется | Используется когда |
 |---|---|---|
-| Identity Provider | SSO, группы, пользовательские атрибуты | login, API вызов |
-| RBAC Mapper | Маппит IdP groups в роли системы | каждый запрос |
-| Policy Engine | Применяет правила доступа к semantic objects | перед планированием и исполнением |
-| PII Classifier | Определяет sensitivity tags колонок/метрик | при catalog import и validation |
-| Column Masking Rules | Маскирует email/phone/id и другие поля | при row-level/drilldown запросах |
-| Row-Level Rules | Ограничивает строки по региону, tenant, org unit | перед исполнением |
-| Cost Guard | Проверяет estimated cost, лимиты строк, timeout | перед исполнением |
-| SQL AST Guard | Блокирует опасный SQL | перед fallback SQL execution |
-| Warehouse Read-only Role | Выполняет только SELECT | runtime execution |
-| Audit Store | Хранит trace действий и решений | всегда |
+| SSO identity | Identity Provider + user context в T2SQL-service | login, API вызов |
+| RBAC mapping | Policy DB, применяется T2SQL-service | каждый запрос |
+| Semantic object access | Policy DB, применяется до ranking и query generation | перед планированием и исполнением |
+| PII tags | Metadata Store + Policy DB | при artifact import, retrieval и validation |
+| Column masking | Policy DB, применяется T2SQL-service или DWH policy layer | при row-level/drilldown запросах |
+| Row-level rules | Policy DB, применяется T2SQL-service или DWH policy layer | перед исполнением |
+| Cost limits | Policy DB, проверяется T2SQL-service | перед исполнением |
+| SQL AST validation | T2SQL-service | перед fallback SQL execution |
+| Read-only warehouse role | Data Warehouse | runtime execution |
+| Audit trail | Audit Store | всегда |
 
 ---
 
 ## Компоненты T2SQL pipeline
 
-| Этап | Вход | Выход | Компоненты |
+| Этап | Вход | Выход | Где выполняется |
 |---|---|---|---|
-| Normalize | текст вопроса | нормализованный текст, даты, язык | Language Normalizer |
-| Classify | нормализованный текст | intent type | Intent Classifier |
-| Retrieve | intent + текст | candidate semantic objects | Semantic Retriever, Search Index |
-| Resolve | candidates | canonical metrics/dimensions/entities | Term Resolver |
-| Plan | resolved objects | query plan | Query Planner |
-| Clarify | low confidence plan | уточняющий вопрос | Clarification Engine |
-| Generate | query plan | semantic query или SQL | Query Generator |
-| Validate | generated query | allow/deny/warn | SQL Validator, Policy Guard |
-| Execute | validated query | result set | Query Executor |
-| Explain | result + metadata | answer payload | Answer Explainer |
-| Learn | feedback | steward task / regression case | Feedback Collector |
+| Normalize | текст вопроса | нормализованный текст, даты, язык | T2SQL-service |
+| Classify | нормализованный текст | intent type | T2SQL-service |
+| Retrieve | intent + текст | candidate semantic objects | T2SQL-service + Metadata Store + Synonym Dictionaries + Vector DB |
+| Resolve | candidates | canonical metrics/dimensions/entities | T2SQL-service |
+| Plan | resolved objects | query plan | T2SQL-service |
+| Clarify | low confidence plan | уточняющий вопрос | T2SQL-service |
+| Generate | query plan | semantic query или SQL | T2SQL-service |
+| Validate | generated query | allow/deny/warn | T2SQL-service + Policy DB |
+| Execute | validated query | result set | T2SQL-service + dbt Semantic Layer / MetricFlow / DWH |
+| Explain | result + metadata | answer payload | T2SQL-service |
+| Learn | feedback | steward task / regression case | T2SQL-service + Audit Store |
 
 ```mermaid
 flowchart LR
@@ -179,12 +191,36 @@ flowchart LR
 
 ---
 
+## Алгоритм обработки вопроса в T2SQL-service
+
+Для реализации T2SQL-service важно зафиксировать не только pipeline, но и порядок обращения к внешним хранилищам:
+
+1. T2SQL-service принимает `question + user context`, восстанавливает session context и получает роли/группы пользователя.
+2. Нормализует текст: язык, даты, валюты, числовые выражения, timezone, domain hint.
+3. Делает первичную policy-проверку в Policy DB: доступные домены, запрет PII/direct identifiers, лимиты периода и строк.
+4. Выполняет lexical lookup в Metadata Store: ищет точные совпадения по metric/dimension/entity/saved query names, labels, descriptions и domain.
+5. Расширяет запрос через Synonym Dictionaries: заменяет пользовательские термины на canonical terms, добавляет переводы и доменные алиасы.
+6. Повторяет lookup в Metadata Store уже по расширенному набору терминов и собирает кандидатов с lineage, certification и ownership.
+7. Запрашивает Vector DB: ищет близкие semantic objects, saved queries, прошлые подтвержденные вопросы и regression cases.
+8. Ранжирует кандидатов: точные совпадения выше vector-only, certified выше experimental, объекты вне policy scope исключаются, deprecated понижается.
+9. Разрешает термины в canonical semantic objects: metrics, dimensions, entities, filters, time dimension, grain, saved query.
+10. Проверяет неоднозначность: если несколько метрик или dimensions имеют близкий score, возвращает уточняющий вопрос вместо генерации SQL.
+11. Строит query plan с `execution_mode`: `saved_query`, `semantic_layer`, `export_cache`, `fallback_sql` или `unsupported`.
+12. Для `semantic_layer` формирует metric query для dbt Semantic Layer / MetricFlow; для `fallback_sql` генерирует controlled SQL только по allowlisted dbt models.
+13. Валидирует query plan и SQL: только `SELECT`, разрешенные таблицы/колонки, join path через dbt entities, обязательный `limit`, cost/timeout, row/column policies.
+14. Выполняет запрос через dbt Semantic Layer / MetricFlow или read-only DWH role.
+15. Формирует ответ: result table, SQL, metric definitions, filters, period, warnings, lineage и confidence.
+16. Записывает audit event: normalized question, selected semantic objects, policy decisions, query plan, SQL hash, latency, status.
+17. При feedback сохраняет связку `question → expected objects/result issue` как задачу data steward и потенциальный regression case.
+
+---
+
 ## Режимы исполнения
 
 | Режим | Когда используется | Как выполняется |
 |---|---|---|
 | `semantic_layer` | KPI, агрегаты, group by, time series | через dbt Semantic Layer / MetricFlow |
-| `saved_query` | вопрос совпал с curated query | через dbt saved query/export |
+| `saved_query` | вопрос совпал с curated query | через dbt saved query / export |
 | `export_cache` | есть материализованный результат | чтение из export/cache table |
 | `fallback_sql` | разрешенный row-level/drilldown вопрос | controlled SQL по allowlisted dbt models |
 | `unsupported` | нет семантики, нет прав, опасный запрос | отказ или уточнение |
@@ -244,458 +280,6 @@ lineage:
 
 ---
 
-## dbt project layout
-
-```text
-dbt_project/
-  models/
-    staging/
-      sources.yml
-      stg_orders.sql
-      stg_customers.sql
-      stg_products.sql
-
-    marts/
-      finance/
-        fct_orders.sql
-        dim_customers.sql
-        dim_products.sql
-        orders.yml
-        customers.yml
-        metrics.yml
-        saved_queries.yml
-
-  macros/
-    security/
-      mask_email.sql
-      apply_region_filter.sql
-
-  semantic/
-    glossary.yml
-    synonyms.yml
-    t2sql_policies.yml
-    regression_questions.yml
-```
-
----
-
-## Пример dbt semantic YAML
-
-```yaml
-version: 2
-
-models:
-  - name: fct_orders
-    description: "One row per order line."
-    config:
-      group: finance
-      access: public
-      contract:
-        enforced: true
-      meta:
-        domain: finance
-        owner: finance_analytics
-
-    columns:
-      - name: order_id
-        data_type: string
-        data_tests: [not_null]
-
-      - name: customer_id
-        data_type: string
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_customers')
-              field: customer_id
-
-      - name: order_date
-        data_type: date
-
-      - name: net_revenue
-        data_type: numeric
-
-    semantic_model:
-      name: orders
-      defaults:
-        agg_time_dimension: order_date
-
-      entities:
-        - name: order
-          type: primary
-          expr: order_id
-
-        - name: customer
-          type: foreign
-          expr: customer_id
-
-      dimensions:
-        - name: order_date
-          type: time
-          expr: order_date
-          type_params:
-            time_granularity: day
-
-        - name: order_status
-          type: categorical
-          expr: status
-
-metrics:
-  - name: revenue
-    label: Revenue
-    description: "Net revenue after discounts, before refunds."
-    type: simple
-    type_params:
-      measure: net_revenue
-    config:
-      meta:
-        domain: finance
-        owner: finance_analytics
-        certified: true
-        synonyms:
-          - sales
-          - turnover
-          - выручка
-
-  - name: average_order_value
-    label: Average Order Value
-    type: ratio
-    type_params:
-      numerator: revenue
-      denominator: orders
-```
-
----
-
-## Glossary и synonyms
-
-```yaml
-business_terms:
-  - term: revenue
-    canonical_object: metric.revenue
-    definition: Net revenue after discounts, before refunds.
-    owner: finance_analytics
-    certified: true
-
-synonyms:
-  revenue:
-    - sales
-    - turnover
-    - net sales
-    - выручка
-    - продажи
-
-  customer__country:
-    - country
-    - client country
-    - страна клиента
-```
-
-Используется при semantic retrieval, disambiguation и объяснении результата.
-
----
-
-## Policies
-
-```yaml
-defaults:
-  allow_write_sql: false
-  allow_raw_sources: false
-  require_limit: true
-  max_rows: 1000
-  timeout_seconds: 60
-
-roles:
-  viewer:
-    allowed_domains: [finance, sales]
-    denied_tags: [pii, restricted]
-    max_date_range_days: 730
-
-  finance_analyst:
-    allowed_domains: [finance]
-    denied_tags: [direct_identifier]
-    max_date_range_days: 3650
-
-pii:
-  email:
-    action: mask
-  phone:
-    action: mask
-  direct_identifier:
-    action: deny
-```
-
-Используется перед построением финального SQL и перед исполнением.
-
----
-
-## Последовательность: настройка администратором
-
-```mermaid
-sequenceDiagram
-    actor Admin as Администратор
-    participant Console as Admin Console
-    participant IdP as Identity Provider
-    participant dbt as dbt Platform/Core
-    participant DWH as Data Warehouse
-    participant Policy as Policy Engine
-    participant Catalog as Semantic Catalog
-
-    Admin->>Console: Создает workspace
-    Console->>IdP: Подключает SSO и группы
-    Console->>dbt: Подключает dbt project/environment
-    Console->>DWH: Проверяет read-only connection
-    Admin->>Policy: Настраивает роли, лимиты, PII rules
-    Console->>Catalog: Запускает artifact import
-    Catalog->>dbt: Читает dbt artifacts
-    Catalog-->>Console: Семантика загружена
-```
-
----
-
-## Последовательность: публикация semantic changes
-
-```mermaid
-sequenceDiagram
-    actor AE as Analytics Engineer
-    actor Steward as Data Steward
-    participant Git as Git repo
-    participant CI as CI/CD
-    participant dbt as dbt build/test
-    participant Catalog as Semantic Catalog
-    participant Index as Search Index
-
-    AE->>Git: Изменяет models/YAML/tests
-    Steward->>Git: Изменяет descriptions/synonyms/glossary
-    AE->>Git: Открывает PR
-    CI->>dbt: dbt parse/build/test
-    CI->>CI: semantic validation
-    Steward->>Git: Review definitions
-    Git->>CI: Merge to main
-    CI->>dbt: Deploy
-    dbt->>Catalog: Publish artifacts
-    Catalog->>Index: Re-index objects
-```
-
----
-
-## Последовательность: успешный metric query
-
-```mermaid
-sequenceDiagram
-    actor User as Пользователь
-    participant UI as Chat UI
-    participant NLQ as NLQ Orchestrator
-    participant Catalog as Semantic Catalog
-    participant Planner as Query Planner
-    participant Guard as Policy Guard
-    participant SL as dbt Semantic Layer
-    participant DWH as Data Warehouse
-    participant Explainer as Answer Explainer
-    participant Audit as Audit Store
-
-    User->>UI: "Выручка по странам за прошлый квартал"
-    UI->>NLQ: question + user context
-    NLQ->>Catalog: resolve revenue, country, period
-    Catalog-->>NLQ: metric.revenue + dimension.customer__country
-    NLQ->>Planner: build query plan
-    Planner-->>NLQ: semantic_layer plan
-    NLQ->>Guard: check access and policies
-    Guard-->>NLQ: allow
-    NLQ->>SL: execute metric query
-    SL->>DWH: compiled SQL
-    DWH-->>SL: result set
-    SL-->>NLQ: result + SQL + metadata
-    NLQ->>Explainer: prepare answer
-    NLQ->>Audit: log trace
-    Explainer-->>UI: result, SQL, definitions
-```
-
----
-
-## Последовательность: неоднозначный вопрос
-
-```mermaid
-sequenceDiagram
-    actor User as Пользователь
-    participant UI as Chat UI
-    participant NLQ as NLQ Orchestrator
-    participant Catalog as Semantic Catalog
-    participant Clarifier as Clarification Engine
-
-    User->>UI: "Покажи продажи по регионам"
-    UI->>NLQ: question
-    NLQ->>Catalog: search sales, region
-    Catalog-->>NLQ: revenue/gross_sales/units_sold + customer_region/sales_region
-    NLQ->>Clarifier: ambiguity detected
-    Clarifier-->>UI: "Что считать продажами и какой регион использовать?"
-    User->>UI: "Выручку по региону клиента"
-    UI->>NLQ: clarification
-    NLQ-->>UI: continues metric query flow
-```
-
----
-
-## Последовательность: отказ по policy
-
-```mermaid
-sequenceDiagram
-    actor User as Пользователь
-    participant UI as Chat UI
-    participant NLQ as NLQ Orchestrator
-    participant Catalog as Semantic Catalog
-    participant Guard as Policy Guard
-    participant Audit as Audit Store
-
-    User->>UI: "Покажи email клиентов и их выручку"
-    UI->>NLQ: question + role
-    NLQ->>Catalog: resolve customer_email, revenue
-    Catalog-->>NLQ: customer_email tagged pii.direct_identifier
-    NLQ->>Guard: check policy
-    Guard-->>NLQ: deny
-    NLQ->>Audit: log denied request
-    NLQ-->>UI: "Нет доступа к email. Можно показать выручку по сегменту или стране."
-```
-
----
-
-## Последовательность: feedback → улучшение семантики
-
-```mermaid
-sequenceDiagram
-    actor User as Пользователь
-    actor Steward as Data Steward
-    participant UI as Chat UI
-    participant Feedback as Feedback Queue
-    participant Git as Git repo
-    participant CI as CI/CD
-    participant Catalog as Semantic Catalog
-
-    User->>UI: Ставит feedback "неверная метрика"
-    UI->>Feedback: save feedback
-    Steward->>Feedback: review question, SQL, objects
-    Steward->>Git: add synonym / update definition
-    Git->>CI: run validation
-    CI-->>Git: pass
-    Git->>Catalog: publish updated artifacts
-```
-
----
-
-## Deployment
-
-```mermaid
-flowchart LR
-    subgraph Client
-        Web[Web UI]
-        APIClient[API Client / BI / Slack]
-    end
-
-    subgraph AppRuntime
-        Gateway[API Gateway]
-        Auth[Auth Middleware]
-        NLQ[NLQ Orchestrator]
-        CatalogAPI[Semantic Catalog API]
-        Search[Search Service]
-        Guard[Policy & SQL Guard]
-        Exec[Query Executor]
-        AuditSvc[Audit Service]
-    end
-
-    subgraph Stores
-        AppDB[(App DB)]
-        VectorDB[(Vector DB)]
-        ObjectStorage[(Object Storage<br/>dbt artifacts)]
-        AuditDB[(Audit DB)]
-    end
-
-    subgraph dbtRuntime
-        dbtJob[dbt Jobs]
-        SemanticLayer[dbt Semantic Layer]
-        MetricFlow[MetricFlow]
-    end
-
-    subgraph Data
-        DWH[(Warehouse)]
-        Cache[(Exports / Cache Tables)]
-    end
-
-    Web --> Gateway
-    APIClient --> Gateway
-    Gateway --> Auth
-    Auth --> NLQ
-    NLQ --> CatalogAPI
-    CatalogAPI --> Search
-    Search --> VectorDB
-    CatalogAPI --> ObjectStorage
-    NLQ --> Guard
-    Guard --> Exec
-    Exec --> SemanticLayer
-    Exec --> MetricFlow
-    Exec --> DWH
-    SemanticLayer --> DWH
-    MetricFlow --> DWH
-    dbtJob --> ObjectStorage
-    dbtJob --> Cache
-    Exec --> AuditSvc
-    AuditSvc --> AuditDB
-    NLQ --> AppDB
-```
-
----
-
-## API
-
-### `POST /v1/questions`
-
-```json
-{
-  "text": "Покажи выручку по странам за прошлый квартал",
-  "domain": "finance",
-  "session_id": "s_123",
-  "options": {
-    "show_sql": true,
-    "max_rows": 100
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "question_id": "q_123",
-  "status": "succeeded",
-  "execution_mode": "semantic_layer",
-  "data": [
-    {"country": "Germany", "revenue": 1200000}
-  ],
-  "sql": "select ...",
-  "semantic_objects": [
-    {"type": "metric", "name": "revenue", "certified": true},
-    {"type": "dimension", "name": "customer__country"}
-  ],
-  "explanation": {
-    "metric": "Revenue = net revenue after discounts, before refunds.",
-    "period": "previous quarter",
-    "lineage": ["fct_orders", "dim_customers"]
-  },
-  "warnings": []
-}
-```
-
-### `POST /v1/feedback`
-
-```json
-{
-  "question_id": "q_123",
-  "rating": "incorrect",
-  "comment": "GMV был интерпретирован как revenue."
-}
-```
-
----
-
 ## Валидация SQL
 
 | Проверка | Правило |
@@ -711,80 +295,18 @@ Response:
 | Functions | только allowlisted functions |
 | Warehouse role | read-only |
 
----
-
-## Состояния запроса
-
-```mermaid
-stateDiagram-v2
-    [*] --> Received
-    Received --> Parsed
-    Parsed --> Retrieved
-    Retrieved --> ClarificationRequired
-    ClarificationRequired --> Parsed
-    Retrieved --> Planned
-    Planned --> Validated
-    Validated --> Rejected
-    Validated --> Executed
-    Executed --> Explained
-    Rejected --> Explained
-    Explained --> Feedback
-    Explained --> [*]
-    Feedback --> [*]
-```
-
----
-
-## Audit event
-
-```json
-{
-  "event": "query_executed",
-  "question_id": "q_123",
-  "user_id": "u_123",
-  "role": "finance_analyst",
-  "semantic_version": "git_sha:abc123",
-  "execution_mode": "semantic_layer",
-  "semantic_objects": ["metric.revenue", "dimension.customer__country"],
-  "sql_hash": "sha256:...",
-  "row_count": 42,
-  "latency_ms": 1840,
-  "status": "succeeded",
-  "created_at": "2026-06-14T12:00:00Z"
-}
-```
-
----
 
 ## CI/CD checks
 
 | Check | Когда | Что проверяет |
 |---|---|---|
-| `dbt parse` | PR | валидность dbt project |
-| `dbt build` | PR/deploy | модели, tests, contracts |
+| [`dbt parse`](https://docs.getdbt.com/reference/commands/parse) | PR | валидность dbt project |
+| [`dbt build`](https://docs.getdbt.com/reference/commands/build) | PR/deploy | модели, tests, contracts |
 | semantic validation | PR/deploy | метрики, dimensions, saved queries |
 | glossary validation | PR | canonical object exists |
 | policy validation | PR | роли и sensitivity tags валидны |
 | T2SQL regression | PR/deploy | вопросы маппятся в ожидаемые semantic objects |
-| artifact publish | deploy | новые artifacts доступны catalog |
-
----
-
-## Regression question
-
-```yaml
-id: revenue_by_country_previous_quarter
-text: "Покажи выручку по странам за прошлый квартал"
-expected:
-  execution_mode: semantic_layer
-  metrics:
-    - revenue
-  dimensions:
-    - customer__country
-  forbidden_columns:
-    - customer_email
-  require_certified_metric: true
-```
+| artifact publish | deploy | новые artifacts доступны Metadata Store и Vector DB |
 
 ---
 
@@ -793,23 +315,9 @@ expected:
 | Блок | Минимум |
 |---|---|
 | dbt coverage | 1 домен, 5–10 метрик, 10–30 dimensions |
-| Semantic Catalog | import artifacts, search, glossary, synonyms |
-| T2SQL | intent, retrieval, planner, semantic query generation |
+| Metadata Store / Vector DB / Synonym Dictionaries | import artifacts, search, glossary, synonyms |
+| T2SQL-service | intent, retrieval, planner, semantic query generation |
 | Execution | dbt SL / MetricFlow adapter |
 | Security | SSO, RBAC, PII deny/mask, audit |
 | UI | вопрос, результат, SQL, explanation, feedback |
 | Quality | 30–50 regression questions |
-
----
-
-## Критерии готовности
-
-- dbt artifacts импортируются после deploy;
-- semantic objects доступны через catalog API;
-- вопросы по certified metrics идут через dbt Semantic Layer / MetricFlow;
-- fallback SQL ограничен allowlist и проходит AST validation;
-- policy guard блокирует PII и недоступные домены;
-- пользователь видит результат, SQL, definitions, warnings;
-- feedback попадает data steward;
-- есть audit trail по каждому запросу;
-- regression suite запускается в CI/CD.
