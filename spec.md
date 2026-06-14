@@ -1,4 +1,4 @@
-# Спецификация: dbt Semantic Layer + Text-to-SQL
+# Спецификация: [dbt Semantic Layer](https://docs.getdbt.com/docs/use-dbt-semantic-layer/dbt-sl) + Text-to-SQL
 
 **Версия:** 0.3  
 **Формат:** component spec  
@@ -26,7 +26,7 @@ T2SQL-service принимает вопрос пользователя на ес
 |---|---|---|
 | Администратор | Настраивает подключения, SSO, роли, лимиты, политики | setup, изменение доступов, incident/debug |
 | Data steward | Управляет бизнес-терминами, синонимами, certified metrics | добавление/уточнение семантики, разбор feedback |
-| Analytics engineer | Развивает dbt-модели, тесты, контракты, semantic YAML | изменение модели данных и метрик |
+| Analytics engineer | Развивает [dbt-модели](https://docs.getdbt.com/docs/build/sql-models), [data tests](https://docs.getdbt.com/reference/resource-properties/data-tests), [контракты](https://docs.getdbt.com/docs/mesh/govern/model-contracts), semantic YAML | изменение модели данных и метрик |
 | Пользователь | Задает вопросы к данным на натуральном языке | обычное использование |
 | T2SQL-service | Парсит вопрос, строит план, применяет policy, генерирует/выполняет запрос | каждый пользовательский вопрос |
 
@@ -70,11 +70,11 @@ flowchart TB
 |---|---|---|
 | Chat UI / NLQ API | Пользовательский и программный вход: вопрос, SQL preview, результат, feedback | пользовательский вопрос или внешний API-вызов |
 | T2SQL-service | Единственный прикладной сервис: auth context, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос |
-| Metadata Store | Нормализованный catalog из dbt artifacts, descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
+| Metadata Store | Нормализованный catalog из [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts), descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
 | Synonym Dictionaries | Бизнес-глоссарий, алиасы, переводы, доменные термины | term resolution, disambiguation, explain |
 | Vector DB | Embeddings для semantic objects, описаний, похожих вопросов и regression cases | semantic retrieval и ranking |
 | Policy DB / Policy Engine | RBAC, PII tags, row/column policies, лимиты, allowlists | перед планированием, генерацией и исполнением |
-| dbt Semantic Layer / MetricFlow | Каноническое исполнение metric queries поверх dbt-семантики | certified KPI, агрегаты, group by, time series |
+| dbt Semantic Layer / [MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow) | Каноническое исполнение metric queries поверх dbt-семантики | certified KPI, агрегаты, group by, time series |
 | Data Warehouse | Фактическое хранилище данных и runtime для compiled SQL | выполнение compiled semantic query или controlled fallback SQL |
 | Audit Store | Trace вопроса, decisions, policy checks, query plan, SQL hash, статус | каждый запрос и incident/debug |
 
@@ -84,18 +84,18 @@ flowchart TB
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
-| [dbt models](https://docs.getdbt.com/docs/build/sql-models) | Физические и логические витрины данных | источник данных для semantic objects |
+| dbt models | Физические и логические витрины данных | источник данных для semantic objects |
 | [dbt semantic models](https://docs.getdbt.com/docs/build/semantic-models) | Описание фактов, измерений, сущностей | при построении metric query |
 | [dbt metrics](https://docs.getdbt.com/docs/build/metrics-overview) | Канонические KPI и формулы | когда вопрос содержит бизнес-метрику |
 | [dbt entities](https://docs.getdbt.com/docs/build/entities) | Join keys между semantic models | при группировках и связях между сущностями |
 | [dbt dimensions](https://docs.getdbt.com/docs/build/dimensions) | Доступные разрезы анализа, включая time dimensions и grain | при `by country`, `by segment`, `monthly` |
 | [dbt saved queries](https://docs.getdbt.com/docs/build/saved-queries) | Сохраненные semantic-запросы | для типовых вопросов и certified outputs |
 | [dbt exports](https://docs.getdbt.com/docs/use-dbt-semantic-layer/exports) | Материализованные saved queries | когда нужен cache, BI-совместимость или low latency |
-| [dbt data tests](https://docs.getdbt.com/reference/resource-properties/data-tests) | Проверка качества данных | в CI/CD и как сигнал trust |
-| [dbt model contracts](https://docs.getdbt.com/docs/mesh/govern/model-contracts) | Контракт колонок и типов | при validation Metadata Store |
+| dbt data tests | Проверка качества данных | в CI/CD и как сигнал trust |
+| dbt model contracts | Контракт колонок и типов | при validation Metadata Store |
 | [dbt docs/descriptions](https://docs.getdbt.com/docs/build/documentation) | Описания моделей, колонок, метрик | для retrieval и explainability |
 | [dbt exposures](https://docs.getdbt.com/docs/build/exposures) | Связь метрик/моделей с downstream BI | для lineage и impact analysis |
-| [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts) | `manifest.json`, `catalog.json`, semantic metadata | для наполнения Metadata Store и Vector DB |
+| dbt artifacts | `manifest.json`, `catalog.json`, semantic metadata | для наполнения Metadata Store и Vector DB |
 
 ---
 
@@ -193,8 +193,8 @@ flowchart LR
 
 | Режим | Когда используется | Как выполняется |
 |---|---|---|
-| `semantic_layer` | KPI, агрегаты, group by, time series | через [dbt Semantic Layer](https://docs.getdbt.com/docs/use-dbt-semantic-layer/dbt-sl) / [MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow) |
-| `saved_query` | вопрос совпал с curated query | через [dbt saved query](https://docs.getdbt.com/docs/build/saved-queries) / export |
+| `semantic_layer` | KPI, агрегаты, group by, time series | через dbt Semantic Layer / MetricFlow |
+| `saved_query` | вопрос совпал с curated query | через dbt saved query / export |
 | `export_cache` | есть материализованный результат | чтение из export/cache table |
 | `fallback_sql` | разрешенный row-level/drilldown вопрос | controlled SQL по allowlisted dbt models |
 | `unsupported` | нет семантики, нет прав, опасный запрос | отказ или уточнение |
