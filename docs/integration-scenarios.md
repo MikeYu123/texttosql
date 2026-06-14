@@ -7,23 +7,24 @@
 ```mermaid
 sequenceDiagram
     actor Admin as Администратор
-    participant Console as Admin Console
+    participant T2SQL as T2SQL-service
     participant IdP as Identity Provider
     participant dbt as dbt Platform/Core
     participant DWH as Data Warehouse
     participant PolicyDB as Policy DB
-    participant T2SQL as T2SQL-service
+    participant Config as System Config
     participant Metadata as Metadata Store
 
-    Admin->>Console: Создает workspace
-    Console->>IdP: Подключает SSO и группы
-    Console->>dbt: Подключает dbt project/environment
-    Console->>DWH: Проверяет read-only connection
-    Admin->>PolicyDB: Настраивает роли, лимиты, PII rules
-    Console->>T2SQL: Запускает artifact import
+    Admin->>T2SQL: Создает workspace
+    T2SQL->>Config: Сохраняет system settings
+    T2SQL->>IdP: Подключает SSO и группы
+    T2SQL->>dbt: Подключает dbt project/environment
+    T2SQL->>DWH: Проверяет read-only connection
+    T2SQL->>PolicyDB: Настраивает роли, лимиты, PII rules
+    T2SQL->>T2SQL: Запускает artifact import
     T2SQL->>dbt: Читает dbt artifacts
     T2SQL->>Metadata: Сохраняет normalized catalog
-    T2SQL-->>Console: Семантика загружена
+    T2SQL-->>Admin: Семантика загружена
 ```
 
 ## Последовательность: публикация semantic changes
@@ -181,6 +182,7 @@ flowchart LR
         Synonyms[(Synonym Dictionaries)]
         VectorDB[(Vector DB)]
         PolicyDB[(Policy DB)]
+        Config[(System Config)]
         AuditDB[(Audit DB)]
     end
 
@@ -204,6 +206,7 @@ flowchart LR
     T2SQL --> Synonyms
     T2SQL --> VectorDB
     T2SQL --> PolicyDB
+    T2SQL --> Config
     T2SQL --> SemanticLayer
     T2SQL --> MetricFlow
     T2SQL --> DWH

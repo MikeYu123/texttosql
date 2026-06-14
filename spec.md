@@ -16,7 +16,7 @@ T2SQL-service принимает вопрос пользователя на ес
 
 | Роль | Что делает | Когда участвует |
 |---|---|---|
-| Администратор | Настраивает подключения, SSO, роли, лимиты, политики | setup, изменение доступов, incident/debug |
+| Администратор | Управляет системной конфигурацией: подключения к dbt/DWH/служебным БД, SSO/RBAC mapping, роли, лимиты, политики | setup, изменение доступов, incident/debug |
 | Data steward / Analytics engineer | Управляет бизнес-терминами, синонимами, certified metrics и изменениями [dbt-моделей](https://docs.getdbt.com/docs/build/sql-models), [data tests](https://docs.getdbt.com/reference/resource-properties/data-tests), [контрактов](https://docs.getdbt.com/docs/mesh/govern/model-contracts), semantic YAML | добавление/уточнение семантики, разбор feedback, изменение модели данных и метрик |
 | Пользователь | Задает вопросы к данным на натуральном языке | обычное использование |
 | T2SQL-service | Парсит вопрос, строит план, применяет policy, генерирует/выполняет запрос | каждый пользовательский вопрос |
@@ -28,7 +28,7 @@ T2SQL-service принимает вопрос пользователя на ес
 ```mermaid
 flowchart TB
     User[Пользователь] --> UI[Chat UI / NLQ API]
-    Admin[Администратор] --> AdminUI[Admin Console]
+    Admin[Администратор] --> T2SQL
     Steward[Data Steward / Analytics Engineer] --> StewardUI[Steward UI]
 
     UI --> T2SQL[T2SQL-service]
@@ -48,7 +48,7 @@ flowchart TB
 
     T2SQL --> Audit[(Audit Logs)]
 
-    AdminUI --> PolicyDB
+    T2SQL --> Config[(System Config<br/>connections + limits)]
     StewardUI --> T2SQL
     StewardUI --> Git
     StewardUI --> Synonyms
@@ -58,7 +58,7 @@ flowchart TB
     classDef custom fill:#dcfce7,stroke:#16a34a,color:#0f172a
 
     class User,Admin,Steward user
-    class UI,AdminUI,StewardUI,T2SQL custom
+    class UI,StewardUI,T2SQL custom
 ```
 
 ---
@@ -69,7 +69,7 @@ flowchart TB
 |---|---|---|
 | Chat UI / NLQ API | Пользовательский и программный вход: вопрос, SQL preview, результат, feedback | пользовательский вопрос или внешний API-вызов |
 | Steward UI | Control plane для data stewards / analytics engineers: glossary, synonyms, dbt YAML, semantic models, metrics, tests, contracts, review feedback, certification status | governance workflow, разбор feedback, автоматизированные git-коммиты/PR |
-| T2SQL-service | Единственный прикладной сервис: auth context, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос |
+| T2SQL-service | Единственный прикладной сервис: auth context, system config, admin operations, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос, администрирование, incident/debug |
 | Metadata Store | Нормализованный catalog из [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts), descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
 | Synonym Dictionaries | Бизнес-глоссарий, алиасы, переводы, доменные термины | term resolution, disambiguation, explain |
 | Vector DB | Embeddings для semantic objects, описаний, похожих вопросов и regression cases | semantic retrieval и ranking |
@@ -81,7 +81,7 @@ flowchart TB
 
 ## Steward workflow
 
-`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. Чтобы не путать его с `Admin Console`, в дизайне он фиксируется как `Steward UI`. Роль data steward объединяется с analytics engineer: один пользователь управляет бизнес-семантикой и dbt-файлами через UI, а изменения публикуются автоматизированными git-коммитами и PR.
+`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. В дизайне он фиксируется как `Steward UI`. Роль data steward объединяется с analytics engineer: один пользователь управляет бизнес-семантикой и dbt-файлами через UI, а изменения публикуются автоматизированными git-коммитами и PR.
 
 ### Что делает data steward
 
