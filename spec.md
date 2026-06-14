@@ -6,13 +6,13 @@
 
 ---
 
-## 1. Область системы
+## Область системы
 
 Система принимает вопрос пользователя на естественном языке, сопоставляет его с dbt-семантикой, строит безопасный запрос, выполняет его в DWH и возвращает результат, SQL и краткое объяснение.
 
 ---
 
-## 2. Роли
+## Роли
 
 | Роль | Что делает | Когда участвует |
 |---|---|---|
@@ -24,7 +24,7 @@
 
 ---
 
-## 3. Высокоуровневая архитектура
+## Высокоуровневая архитектура
 
 ```mermaid
 flowchart TB
@@ -62,7 +62,7 @@ flowchart TB
 
 ---
 
-## 4. Компоненты приложения
+## Компоненты приложения
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
@@ -88,7 +88,7 @@ flowchart TB
 
 ---
 
-## 5. Компоненты semantic layer
+## Компоненты semantic layer
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
@@ -108,7 +108,7 @@ flowchart TB
 
 ---
 
-## 6. Компоненты metadata/catalog
+## Компоненты metadata/catalog
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
@@ -125,7 +125,7 @@ flowchart TB
 
 ---
 
-## 7. Компоненты безопасности
+## Компоненты безопасности
 
 | Компонент | Назначение | Используется когда |
 |---|---|---|
@@ -142,7 +142,7 @@ flowchart TB
 
 ---
 
-## 8. Компоненты T2SQL pipeline
+## Компоненты T2SQL pipeline
 
 | Этап | Вход | Выход | Компоненты |
 |---|---|---|---|
@@ -179,7 +179,7 @@ flowchart LR
 
 ---
 
-## 9. Режимы исполнения
+## Режимы исполнения
 
 | Режим | Когда используется | Как выполняется |
 |---|---|---|
@@ -191,7 +191,7 @@ flowchart LR
 
 ---
 
-## 10. Внутренний query plan
+## Внутренний query plan
 
 ```json
 {
@@ -215,7 +215,7 @@ flowchart LR
 
 ---
 
-## 11. Формат semantic object
+## Формат semantic object
 
 ```yaml
 id: metric.revenue
@@ -244,7 +244,7 @@ lineage:
 
 ---
 
-## 12. dbt project layout
+## dbt project layout
 
 ```text
 dbt_project/
@@ -279,7 +279,7 @@ dbt_project/
 
 ---
 
-## 13. Пример dbt semantic YAML
+## Пример dbt semantic YAML
 
 ```yaml
 version: 2
@@ -367,7 +367,7 @@ metrics:
 
 ---
 
-## 14. Glossary и synonyms
+## Glossary и synonyms
 
 ```yaml
 business_terms:
@@ -395,7 +395,7 @@ synonyms:
 
 ---
 
-## 15. Policies
+## Policies
 
 ```yaml
 defaults:
@@ -429,7 +429,7 @@ pii:
 
 ---
 
-## 16. Последовательность: настройка администратором
+## Последовательность: настройка администратором
 
 ```mermaid
 sequenceDiagram
@@ -453,7 +453,7 @@ sequenceDiagram
 
 ---
 
-## 17. Последовательность: публикация semantic changes
+## Последовательность: публикация semantic changes
 
 ```mermaid
 sequenceDiagram
@@ -479,7 +479,7 @@ sequenceDiagram
 
 ---
 
-## 18. Последовательность: успешный metric query
+## Последовательность: успешный metric query
 
 ```mermaid
 sequenceDiagram
@@ -513,7 +513,7 @@ sequenceDiagram
 
 ---
 
-## 19. Последовательность: неоднозначный вопрос
+## Последовательность: неоднозначный вопрос
 
 ```mermaid
 sequenceDiagram
@@ -536,7 +536,7 @@ sequenceDiagram
 
 ---
 
-## 20. Последовательность: отказ по policy
+## Последовательность: отказ по policy
 
 ```mermaid
 sequenceDiagram
@@ -559,7 +559,7 @@ sequenceDiagram
 
 ---
 
-## 21. Последовательность: feedback → улучшение семантики
+## Последовательность: feedback → улучшение семантики
 
 ```mermaid
 sequenceDiagram
@@ -582,7 +582,7 @@ sequenceDiagram
 
 ---
 
-## 22. Deployment
+## Deployment
 
 ```mermaid
 flowchart LR
@@ -644,7 +644,7 @@ flowchart LR
 
 ---
 
-## 23. API
+## API
 
 ### `POST /v1/questions`
 
@@ -696,7 +696,7 @@ Response:
 
 ---
 
-## 24. Валидация SQL
+## Валидация SQL
 
 | Проверка | Правило |
 |---|---|
@@ -713,7 +713,7 @@ Response:
 
 ---
 
-## 25. Состояния запроса
+## Состояния запроса
 
 ```mermaid
 stateDiagram-v2
@@ -735,7 +735,7 @@ stateDiagram-v2
 
 ---
 
-## 26. Audit event
+## Audit event
 
 ```json
 {
@@ -756,7 +756,7 @@ stateDiagram-v2
 
 ---
 
-## 27. CI/CD checks
+## CI/CD checks
 
 | Check | Когда | Что проверяет |
 |---|---|---|
@@ -770,7 +770,7 @@ stateDiagram-v2
 
 ---
 
-## 28. Regression question
+## Regression question
 
 ```yaml
 id: revenue_by_country_previous_quarter
@@ -788,7 +788,7 @@ expected:
 
 ---
 
-## 29. Минимальный MVP
+## Минимальный MVP
 
 | Блок | Минимум |
 |---|---|
@@ -802,7 +802,7 @@ expected:
 
 ---
 
-## 30. Критерии готовности
+## Критерии готовности
 
 - dbt artifacts импортируются после deploy;
 - semantic objects доступны через catalog API;
