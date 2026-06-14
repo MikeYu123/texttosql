@@ -295,29 +295,6 @@ lineage:
 | Functions | только allowlisted functions |
 | Warehouse role | read-only |
 
-<!-- --- 
-##Кланкер нагенерил, пока оставим в виде коммента
-## Состояния запроса
-
-```mermaid
-stateDiagram-v2
-    [*] --> Received
-    Received --> Parsed
-    Parsed --> Retrieved
-    Retrieved --> ClarificationRequired
-    ClarificationRequired --> Parsed
-    Retrieved --> Planned
-    Planned --> Validated
-    Validated --> Rejected
-    Validated --> Executed
-    Executed --> Explained
-    Rejected --> Explained
-    Explained --> Feedback
-    Explained --> [*]
-    Feedback --> [*]
-```
-
---- -->
 
 ## CI/CD checks
 
