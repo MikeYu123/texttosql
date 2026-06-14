@@ -17,8 +17,7 @@ T2SQL-service принимает вопрос пользователя на ес
 | Роль | Что делает | Когда участвует |
 |---|---|---|
 | Администратор | Настраивает подключения, SSO, роли, лимиты, политики | setup, изменение доступов, incident/debug |
-| Data steward | Управляет бизнес-терминами, синонимами, certified metrics | добавление/уточнение семантики, разбор feedback |
-| Analytics engineer | Развивает [dbt-модели](https://docs.getdbt.com/docs/build/sql-models), [data tests](https://docs.getdbt.com/reference/resource-properties/data-tests), [контракты](https://docs.getdbt.com/docs/mesh/govern/model-contracts), semantic YAML | изменение модели данных и метрик |
+| Data steward / Analytics engineer | Управляет бизнес-терминами, синонимами, certified metrics и изменениями [dbt-моделей](https://docs.getdbt.com/docs/build/sql-models), [data tests](https://docs.getdbt.com/reference/resource-properties/data-tests), [контрактов](https://docs.getdbt.com/docs/mesh/govern/model-contracts), semantic YAML | добавление/уточнение семантики, разбор feedback, изменение модели данных и метрик |
 | Пользователь | Задает вопросы к данным на натуральном языке | обычное использование |
 | T2SQL-service | Парсит вопрос, строит план, применяет policy, генерирует/выполняет запрос | каждый пользовательский вопрос |
 
@@ -30,8 +29,7 @@ T2SQL-service принимает вопрос пользователя на ес
 flowchart TB
     User[Пользователь] --> UI[Chat UI / NLQ API]
     Admin[Администратор] --> AdminUI[Admin Console]
-    Steward[Data Steward] --> StewardUI[Steward UI]
-    AE[Analytics Engineer] --> Git[dbt Git repo]
+    Steward[Data Steward / Analytics Engineer] --> StewardUI[Steward UI]
 
     UI --> T2SQL[T2SQL-service]
 
@@ -52,13 +50,14 @@ flowchart TB
 
     AdminUI --> PolicyDB
     StewardUI --> T2SQL
+    StewardUI --> Git
     StewardUI --> Synonyms
     StewardUI --> Audit
 
     classDef user fill:#dbeafe,stroke:#2563eb,color:#0f172a
     classDef custom fill:#dcfce7,stroke:#16a34a,color:#0f172a
 
-    class User,Admin,Steward,AE user
+    class User,Admin,Steward user
     class UI,AdminUI,StewardUI,T2SQL custom
 ```
 
@@ -69,7 +68,7 @@ flowchart TB
 | Компонент | Назначение | Используется когда |
 |---|---|---|
 | Chat UI / NLQ API | Пользовательский и программный вход: вопрос, SQL preview, результат, feedback | пользовательский вопрос или внешний API-вызов |
-| Steward UI | Control plane для data stewards: glossary, synonyms, review feedback, certification status | governance workflow, разбор feedback |
+| Steward UI | Control plane для data stewards / analytics engineers: glossary, synonyms, dbt YAML, semantic models, metrics, tests, contracts, review feedback, certification status | governance workflow, разбор feedback, автоматизированные git-коммиты/PR |
 | T2SQL-service | Единственный прикладной сервис: auth context, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос |
 | Metadata Store | Нормализованный catalog из [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts), descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
 | Synonym Dictionaries | Бизнес-глоссарий, алиасы, переводы, доменные термины | term resolution, disambiguation, explain |
@@ -82,7 +81,7 @@ flowchart TB
 
 ## Steward workflow
 
-`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. Чтобы не путать его с `Admin Console`, в дизайне он фиксируется как `Steward UI`.
+`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. Чтобы не путать его с `Admin Console`, в дизайне он фиксируется как `Steward UI`. Роль data steward объединяется с analytics engineer: один пользователь управляет бизнес-семантикой и dbt-файлами через UI, а изменения публикуются автоматизированными git-коммитами и PR.
 
 ### Что делает data steward
 
@@ -91,16 +90,17 @@ flowchart TB
 | Разбор плохого ответа | Видит question trace, выбранные semantic objects, SQL hash, policy decisions, feedback comment | создает steward task или regression case |
 | Управление glossary | Добавляет/редактирует business term, definition, owner, domain | обновляется Synonym Dictionaries и Metadata Store |
 | Управление synonyms | Маппит пользовательские формулировки на canonical semantic object | T2SQL-service лучше resolve-ит термины |
+| Изменение dbt semantics | Редактирует descriptions, semantic models, metrics, saved queries, tests, contracts | Steward UI создает branch, коммитит dbt YAML/SQL changes и открывает PR |
 | Certification | Помечает metric/dimension/saved query как certified/experimental/deprecated | ranking в retrieval учитывает статус |
-| Review изменений | Проверяет PR или draft-изменение перед публикацией | CI/CD валидирует glossary, policies и regression questions |
+| Review изменений | Проверяет PR или draft-изменение перед публикацией | CI/CD валидирует dbt project, glossary, policies и regression questions |
 
 ### Варианты реализации
 
 | Вариант | Когда выбирать | Как выглядит |
 |---|---|---|
-| Встроенный `Steward UI` в T2SQL-service | MVP, нет enterprise data catalog, нужен быстрый workflow для feedback и synonyms | 3–5 экранов: feedback queue, semantic object detail, glossary editor, synonym editor, certification toggle. Изменения сохраняются как YAML/JSON в Git или в App DB с последующим export в Git. |
+| Встроенный `Steward UI` в T2SQL-service | MVP, нет enterprise data catalog, нужен быстрый workflow для feedback, synonyms и dbt semantic changes | 4–6 экранов: feedback queue, semantic object detail, dbt semantic YAML editor, glossary editor, synonym editor, certification toggle. Изменения сохраняются как branch + commit + PR в dbt Git repo. |
 | Third-party data catalog | В компании уже есть governance/catalog practice или нужен готовый workflow approval/ownership/asset tagging | T2SQL-service синхронизирует glossary terms, owners, domains, tags и descriptions через adapter. Кандидаты: [OpenMetadata Glossary](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary) или [DataHub GlossaryTerm](https://docs.datahub.com/docs/generated/metamodel/entities/glossaryterm). |
-| Git-only workflow | Команда analytics engineering хочет все semantic changes review-ить как код | Data steward правит `glossary.yml`, `synonyms.yml`, descriptions и regression questions в PR; UI показывает feedback, но не редактирует semantic state напрямую. |
+| Git-only workflow | Команда хочет все semantic changes review-ить как код без UI-редактора | Steward UI показывает feedback и deep link на файлы, а пользователь правит `glossary.yml`, `synonyms.yml`, dbt YAML/SQL descriptions и regression questions напрямую в PR. |
 
 Рекомендация для текущего дизайна: для MVP реализовать встроенный `Steward UI` как часть T2SQL-service, а интеграцию с data catalog оставить adapter boundary. Так T2SQL не зависит от конкретного vendor, но может заменить собственный glossary/synonym UI на OpenMetadata/DataHub, если они уже используются в организации.
 

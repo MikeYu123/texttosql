@@ -30,8 +30,8 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    actor AE as Analytics Engineer
-    actor Steward as Data Steward
+    actor Steward as Data Steward / Analytics Engineer
+    participant StewardUI as Steward UI
     participant Git as Git repo
     participant CI as CI/CD
     participant dbt as dbt build/test
@@ -40,12 +40,13 @@ sequenceDiagram
     participant Synonyms as Synonym Dictionaries
     participant VectorDB as Vector DB
 
-    AE->>Git: Изменяет models/YAML/tests
-    Steward->>Git: Изменяет descriptions/synonyms/glossary
-    AE->>Git: Открывает PR
+    Steward->>StewardUI: Изменяет dbt YAML/models/tests/glossary/synonyms
+    StewardUI->>Git: Создает branch и automated commit
+    StewardUI->>Git: Открывает PR
+    Git->>CI: PR event
     CI->>dbt: dbt parse/build/test
     CI->>CI: semantic validation
-    Steward->>Git: Review definitions
+    Steward->>Git: Review generated diff
     Git->>CI: Merge to main
     CI->>dbt: Deploy
     dbt->>T2SQL: Publish artifacts
@@ -136,7 +137,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor User as Пользователь
-    actor Steward as Data Steward
+    actor Steward as Data Steward / Analytics Engineer
     participant UI as Chat UI
     participant StewardUI as Steward UI
     participant T2SQL as T2SQL-service
@@ -151,7 +152,8 @@ sequenceDiagram
     T2SQL->>Audit: attach feedback to question trace
     Steward->>StewardUI: review feedback queue
     StewardUI->>Audit: load question trace, SQL hash, selected objects
-    StewardUI->>Git: add synonym / update definition / regression case
+    StewardUI->>Git: automated commit with synonym / dbt definition / regression case
+    Git->>CI: PR event
     Git->>CI: run validation
     CI-->>Git: pass
     Git->>Metadata: publish updated artifacts
