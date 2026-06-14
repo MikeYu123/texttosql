@@ -295,8 +295,7 @@ lineage:
 | Functions | только allowlisted functions |
 | Warehouse role | read-only |
 
----
-
+<!-- --- Кланкер нагенерил, пока оставим в виде коммента
 ## Состояния запроса
 
 ```mermaid
@@ -317,7 +316,7 @@ stateDiagram-v2
     Feedback --> [*]
 ```
 
----
+--- -->
 
 ## CI/CD checks
 
@@ -344,17 +343,3 @@ stateDiagram-v2
 | Security | SSO, RBAC, PII deny/mask, audit |
 | UI | вопрос, результат, SQL, explanation, feedback |
 | Quality | 30–50 regression questions |
-
----
-
-## Критерии готовности
-
-- dbt artifacts импортируются после deploy;
-- semantic objects доступны T2SQL-service через Metadata Store;
-- вопросы по certified metrics идут через dbt Semantic Layer / MetricFlow;
-- fallback SQL ограничен allowlist и проходит AST validation;
-- T2SQL-service и Policy DB блокируют PII и недоступные домены;
-- пользователь видит результат, SQL, definitions, warnings;
-- feedback попадает data steward;
-- есть audit trail по каждому запросу;
-- regression suite запускается в CI/CD.
