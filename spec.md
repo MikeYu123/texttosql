@@ -73,11 +73,6 @@ flowchart TB
 | Data Warehouse | Фактическое хранилище данных и runtime для compiled SQL | выполнение compiled semantic query или controlled fallback SQL |
 | Audit Store | Trace вопроса, decisions, policy checks, query plan, SQL hash, статус | каждый запрос и incident/debug |
 
----
-
-## Steward workflow
-
-`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. Чтобы не плодить компоненты, в дизайне он фиксируется как `Admin / Steward UI`.
 
 ### Что делает data steward
 
