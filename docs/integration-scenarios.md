@@ -138,6 +138,7 @@ sequenceDiagram
     actor User as Пользователь
     actor Steward as Data Steward
     participant UI as Chat UI
+    participant StewardUI as Admin / Steward UI
     participant T2SQL as T2SQL-service
     participant Audit as Audit Store
     participant Git as Git repo
@@ -148,8 +149,9 @@ sequenceDiagram
     User->>UI: Ставит feedback "неверная метрика"
     UI->>T2SQL: save feedback
     T2SQL->>Audit: attach feedback to question trace
-    Steward->>Audit: review question, SQL, objects
-    Steward->>Git: add synonym / update definition
+    Steward->>StewardUI: review feedback queue
+    StewardUI->>Audit: load question trace, SQL hash, selected objects
+    StewardUI->>Git: add synonym / update definition / regression case
     Git->>CI: run validation
     CI-->>Git: pass
     Git->>Metadata: publish updated artifacts
@@ -163,6 +165,7 @@ flowchart LR
     subgraph Client
         Web[Web UI]
         APIClient[API Client / BI / Slack]
+        StewardUI[Admin / Steward UI]
     end
 
     subgraph AppRuntime
@@ -192,6 +195,7 @@ flowchart LR
 
     Web --> Gateway
     APIClient --> Gateway
+    StewardUI --> Gateway
     Gateway --> T2SQL
     T2SQL --> AppDB
     T2SQL --> Metadata

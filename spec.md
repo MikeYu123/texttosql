@@ -38,7 +38,7 @@ T2SQL-service принимает вопрос пользователя на ес
 flowchart TB
     User[Пользователь] --> UI[Chat UI / NLQ API]
     Admin[Администратор] --> AdminUI[Admin Console]
-    Steward[Data Steward] --> StewardUI[Steward Studio]
+    Steward[Data Steward] --> StewardUI[Admin / Steward UI]
     AE[Analytics Engineer] --> Git[dbt Git repo]
 
     UI --> T2SQL[T2SQL-service]
@@ -59,7 +59,9 @@ flowchart TB
     T2SQL --> Audit[(Audit Logs)]
 
     AdminUI --> PolicyDB
+    StewardUI --> T2SQL
     StewardUI --> Synonyms
+    StewardUI --> Audit
 ```
 
 ---
@@ -69,6 +71,7 @@ flowchart TB
 | Компонент | Назначение | Используется когда |
 |---|---|---|
 | Chat UI / NLQ API | Пользовательский и программный вход: вопрос, SQL preview, результат, feedback | пользовательский вопрос или внешний API-вызов |
+| Admin / Steward UI | Control plane для администраторов и data stewards: политики, glossary, synonyms, review feedback, certification status | setup, governance workflow, разбор feedback |
 | T2SQL-service | Единственный прикладной сервис: auth context, normalization, retrieval, planning, generation, validation, execution, explain, feedback, audit | каждый пользовательский вопрос |
 | Metadata Store | Нормализованный catalog из [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts), descriptions, lineage, certification, ownership | retrieval, planning, explain, CI validation |
 | Synonym Dictionaries | Бизнес-глоссарий, алиасы, переводы, доменные термины | term resolution, disambiguation, explain |
@@ -77,6 +80,32 @@ flowchart TB
 | dbt Semantic Layer / [MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow) | Каноническое исполнение metric queries поверх dbt-семантики | certified KPI, агрегаты, group by, time series |
 | Data Warehouse | Фактическое хранилище данных и runtime для compiled SQL | выполнение compiled semantic query или controlled fallback SQL |
 | Audit Store | Trace вопроса, decisions, policy checks, query plan, SQL hash, статус | каждый запрос и incident/debug |
+
+---
+
+## Steward workflow
+
+`Steward Studio` в предыдущей версии документа был не отдельным runtime-сервисом, а рабочим местом data steward. Чтобы не плодить компоненты, в дизайне он фиксируется как `Admin / Steward UI`.
+
+### Что делает data steward
+
+| Задача | Действие в UI | Результат |
+|---|---|---|
+| Разбор плохого ответа | Видит question trace, выбранные semantic objects, SQL hash, policy decisions, feedback comment | создает steward task или regression case |
+| Управление glossary | Добавляет/редактирует business term, definition, owner, domain | обновляется Synonym Dictionaries и Metadata Store |
+| Управление synonyms | Маппит пользовательские формулировки на canonical semantic object | T2SQL-service лучше resolve-ит термины |
+| Certification | Помечает metric/dimension/saved query как certified/experimental/deprecated | ranking в retrieval учитывает статус |
+| Review изменений | Проверяет PR или draft-изменение перед публикацией | CI/CD валидирует glossary, policies и regression questions |
+
+### Варианты реализации
+
+| Вариант | Когда выбирать | Как выглядит |
+|---|---|---|
+| Встроенный `Admin / Steward UI` в T2SQL-service | MVP, нет enterprise data catalog, нужен быстрый workflow для feedback и synonyms | 3–5 экранов: feedback queue, semantic object detail, glossary editor, synonym editor, certification toggle. Изменения сохраняются как YAML/JSON в Git или в App DB с последующим export в Git. |
+| Third-party data catalog | В компании уже есть governance/catalog practice или нужен готовый workflow approval/ownership/asset tagging | T2SQL-service синхронизирует glossary terms, owners, domains, tags и descriptions через adapter. Кандидаты: [OpenMetadata Glossary](https://docs.open-metadata.org/latest/how-to-guides/data-governance/glossary) или [DataHub GlossaryTerm](https://docs.datahub.com/docs/generated/metamodel/entities/glossaryterm). |
+| Git-only workflow | Команда analytics engineering хочет все semantic changes review-ить как код | Data steward правит `glossary.yml`, `synonyms.yml`, descriptions и regression questions в PR; UI показывает feedback, но не редактирует semantic state напрямую. |
+
+Рекомендация для текущего дизайна: для MVP реализовать встроенный `Admin / Steward UI` как часть T2SQL-service, а интеграцию с data catalog оставить adapter boundary. Так T2SQL не зависит от конкретного vendor, но может заменить собственный glossary/synonym UI на OpenMetadata/DataHub, если они уже используются в организации.
 
 ---
 
