@@ -138,7 +138,7 @@ sequenceDiagram
     actor User as Пользователь
     actor Steward as Data Steward
     participant UI as Chat UI
-    participant StewardUI as Admin / Steward UI
+    participant StewardUI as Steward UI
     participant T2SQL as T2SQL-service
     participant Audit as Audit Store
     participant Git as Git repo
@@ -165,7 +165,7 @@ flowchart LR
     subgraph Client
         Web[Web UI]
         APIClient[API Client / BI / Slack]
-        StewardUI[Admin / Steward UI]
+        StewardUI[Steward UI]
     end
 
     subgraph AppRuntime
